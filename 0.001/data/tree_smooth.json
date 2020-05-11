@@ -8,20 +8,20 @@
     "parameter_comment": "some parameters used in the chosen algorithm",
     "start_scale_Sb": 10000,
     "start_scale_Sb_comment": "scale denominator of base map (according to dataset)",
-    "no_of_objects_Nb": 13238,
+    "no_of_objects_Nb": 314,
     "no_of_objects_Nb_comment": "number of objects on base map (according to dataset)",
-    "no_of_steps_Ns": 13237,
+    "no_of_steps_Ns": 314,
     "no_of_steps_comment": "number of steps of the SSCTree (according to dataset)",
     "view_scale_Sv": 200000,
     "view_scale_Sv_comment": "scale denominator of initial view (according to users' preference)"
   },
   "id": 0,
-  "box": [ 182000.0, 307900.0, 0.0, 191000.0, 317000.0, 13238.0 ],
+  "box": [ 182000.0, 307900.0, 0.0, 191000.0, 317000.0, 314.0 ],
   "children": [],
   "dataelements": [
     {
       "id": 1,
-      "box": [ 182000.0, 307900.0, 0.0, 191000.0, 317000.0, 13238.0 ],
+      "box": [ 182000.0, 307900.0, 0.0, 191000.0, 317000.0, 314.0 ],
       "href": "sscgen_smooth.obj"
     }
   ]

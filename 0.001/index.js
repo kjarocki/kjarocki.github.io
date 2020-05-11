@@ -298,7 +298,7 @@
             _prev = now;
 
             // standard value for zoom scroll_factor
-            var scroll_factor = 0.01;
+            var scroll_factor = 0.1;
             var direction = Math.max(-1, Math.min(1, -value));
             if (_trace === null)
             {
@@ -311,7 +311,7 @@
                 _trace.push(direction);
 
                 // FIXME: SETTINGS: var radios = document.getElementsByName('speed');
-                var speed = 0.01;
+                var speed = 1;
                 // FIXME: SETTINGS: 
                 /*
                 for (var i = 0, length = radios.length; i < length; i++) {
@@ -1084,7 +1084,7 @@
                 this.ymin + this.height() * 0.5]
     };
 
-    var meter_to_pixel = 1500; // 1 meter equals 3779.5275590551 pixels
+    var meter_to_pixel = 3779.5275590551; // 1 meter equals 3779.5275590551 pixels
 
 
     //import { log } from 'util';
@@ -1865,7 +1865,7 @@
                     //eventdiff_ltlt = eventdiff_dt.eventdiff
                     eventdiff_dt.eventdiff_repetition.forEach(function (eventdiff_rep_lt) {
                         for (var i = 0; i < eventdiff_rep_lt[1]; i++) {
-                            var max_parallel = Math.ceil(current_face_num * parallel_param);
+                            var max_parallel = 1 //Math.ceil(current_face_num * parallel_param);
                             var merged_num = max_parallel - eventdiff_rep_lt[0];
                             current_face_num -= merged_num;
                             step_highs.push(step_highs[step_highs.length - 1] + merged_num);
