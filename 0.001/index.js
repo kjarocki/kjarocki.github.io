@@ -1084,7 +1084,7 @@
                 this.ymin + this.height() * 0.5]
     };
 
-    var meter_to_pixel = 1000.5275590551; // 1 meter equals 3779.5275590551 pixels
+    var meter_to_pixel = 15001; // 1 meter equals 3779.5275590551 pixels
 
 
     //import { log } from 'util';
