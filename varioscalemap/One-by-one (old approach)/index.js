@@ -310,20 +310,21 @@
                 var delta = now - prev[0];
                 _trace.push(direction);
 
-                // FIXME: SETTINGS: var radios = document.getElementsByName('speed');
-                var speed = 1;
                 // FIXME: SETTINGS: 
-                /*
-                for (var i = 0, length = radios.length; i < length; i++) {
-                    if (radios[i].checked) {
-                        // do whatever you want with the checked radio
-                        scroll_factor = parseFloat(radios[i].value)
-                        // only one radio can be logically checked, don't check the rest
-                        break;
-                    }
-                }
-                */
-
+                //var radios = document.getElementsByName('speed');
+                //let speed = 1
+                // FIXME: SETTINGS: 
+                
+                //for (var i = 0, length = radios.length; i < length; i++) {
+                //    if (radios[i].checked) {
+                //        // do whatever you want with the checked radio
+                //        speed = parseFloat(radios[i].value)
+                //        // only one radio can be logically checked, don't check the rest
+                //        break;
+                //    }
+                //}
+                
+                //speed = getspeed()
 
                 // make larger zoom scroll_factors if mousewheel went faster
                 // FIXME: allow user to set multiplication scroll_factor, e.g.
@@ -343,7 +344,7 @@
                         scroll_factor = 0.5;
                         break;
                 }
-                scroll_factor *= speed;
+                scroll_factor *= getspeed();
                 _trace.shift(2000);
     //            console.log(delta + " " + prev[1] + " " + scroll_factor);
             }
@@ -369,7 +370,40 @@
     //        console.log(_trace._trace);
             // console.log(_trace.length())
         }
+    }
 
+
+    function getspeed() {
+        var radios = document.getElementsByName('speed');
+        var factor = 1;
+        for (var i = 0, length = radios.length; i < length; i++) {
+            if (radios[i].checked) {
+                // do whatever you want with the checked radio
+                factor = parseFloat(radios[i].value);
+                // only one radio can be logically checked, don't check the rest
+                break;
+            }
+        }
+
+        return factor
+    }
+
+
+
+    function zoomButtonHandler(map) {
+        var canvas = map.getCanvasContainer();
+
+        document.getElementById("zoomInButton").addEventListener('click',
+            function () {
+                map.zoomInAnimated(canvas.width / 2, canvas.height / 2, getspeed());
+            }
+        );
+
+        document.getElementById("zoomOutButton").addEventListener('click',
+            function () {
+                map.zoomOutAnimated(canvas.width / 2, canvas.height / 2, getspeed());
+            }
+        );
     }
 
     /**
@@ -1152,6 +1186,10 @@
 
         // set up initial transformation
         this.initTransform(center_world, viewport_size, denominator);
+
+        this.snapped_step = Number.MAX_SAFE_INTEGER;
+        this.snapped_St = denominator;
+        //this.current_step = Number.MAX_SAFE_INTEGER
     };
 
     // fixme: rename -> initTransform
@@ -1221,32 +1259,44 @@
         this.update_world_square_viewport(visible_world, center[0], center[1]);
     };
 
-    Transform.prototype.zoom = function zoom (ssctree, zoom_factor, x, y) {
+    Transform.prototype.zoom = function zoom (ssctree, zoom_factor, x, y, if_snap) {
+        //console.log(' ')
+        //let if_snap = true
         //console.log('transform.js St before:', this.getScaleDenominator())
         //console.log('transform.js factor:', zoom_factor)
 
+        var St_current = this.getScaleDenominator();
+        var current_step = ssctree.get_step_from_St(St_current); //current_step should be compute instantly because of aborting actions
         this.compute_zoom_parameters(zoom_factor, x, y);
         var St = this.getScaleDenominator();
-            
+
+
+        //console.log('transform.js St_current:', St_current)
+        //console.log('transform.js St:', St)
+        //console.log('transform.js St_current / St:', St_current / St)
+        //console.log('transform.js zoom_factor:', zoom_factor)
+
+        //console.log('transform.js ----------------:')
         //console.log('transform.js St after:', this.getScaleDenominator())
 
-        var snapped_step = ssctree.get_step_from_St(St, true);
-            
 
+
+        var snapped_step = ssctree.get_step_from_St(St, if_snap, zoom_factor, current_step);
+        var time_factor = ssctree.get_time_factor(St, if_snap, zoom_factor, current_step);
         var snapped_St = ssctree.get_St_from_step(snapped_step);
-        //console.log('transform.js, snapped_step:', snapped_step)
+        this.snapped_step = snapped_step;
+        this.snapped_St = snapped_St;
 
+        //this.current_step = snapped_step
 
         //console.log('transform.js snapped_step:', snapped_step)
         //console.log('transform.js snapped_St:', snapped_St)
         //console.log('transform.js St / snapped_St:', St / snapped_St)
-        //let snapped_factor = factor * St / snapped_St
-        //this.compute_zoom_parameters(snapped_factor, x, y)
         this.compute_zoom_parameters(St / snapped_St, x, y);
         //let final_St = this.getScaleDenominator()
         //console.log('transform.js final St:', final_St) 
         //console.log('transform.js final step:', ssctree.get_step_from_St(St, false))
-            
+        return time_factor
     };
 
     Transform.prototype.compute_zoom_parameters = function compute_zoom_parameters (zoom_factor, x, y) {
@@ -1411,7 +1461,7 @@
         }
     };
 
-    DrawProgram.prototype._prepare_vertices = function _prepare_vertices (gl, shaderProgram, attribute_name, itemSize, stride, offset) {
+    DrawProgram.prototype._specify_data_for_shaderProgram = function _specify_data_for_shaderProgram (gl, shaderProgram, attribute_name, itemSize, stride, offset) {
 
         var attrib_location = gl.getAttribLocation(shaderProgram, attribute_name);
         gl.enableVertexAttribArray(attrib_location);
@@ -1452,7 +1502,7 @@
 
             var gl = this.gl;
             gl.useProgram(this.shaderProgram);
-            gl.bindBuffer(gl.ARRAY_BUFFER, tile.content.buffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, tile.content.buffer); 
 
             // FIXME: better to store with bucket how the layout of the mesh is?
             var positionAttrib = gl.getAttribLocation(this.shaderProgram, 'vertexPosition_modelspace');
@@ -1536,10 +1586,10 @@
             // interleaved arrays.
 
             gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPosBufr);
-            this._prepare_vertices(gl, shaderProgram, 'vertexPosition_modelspace', 4, 0, 0);
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'vertexPosition_modelspace', 4, 0, 0);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, displacementBuffer);
-            this._prepare_vertices(gl, shaderProgram, 'displacement', 2, 0, 0);
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'displacement', 2, 0, 0);
 
             // the unit of boundary_width is mm; 1 mm equals 3.7795275590551 pixels
             // FIXME: MM: at which amount of dots per inch has this been calculated?
@@ -1625,8 +1675,12 @@
             var shaderProgram = this.shaderProgram;
             gl.useProgram(shaderProgram);
             gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPosBufr);
-            this._prepare_vertices(gl, shaderProgram, 'vertexPosition_modelspace', 3, 24, 0);
-            this._prepare_vertices(gl, shaderProgram, 'vertexColor', 3, 24, 12);
+
+            //stride = 24: each of the six values(x, y, z, r_frac, g_frac, b_frac) takes 4 bytes
+            //itemSize = 3: x, y, z;   
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'vertexPosition_modelspace', 3, 24, 0);
+            //itemSize = 3: r_frac, g_frac, b_frac;   offset = 12: the first 12 bytes are for x, y, z
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'vertexColor', 3, 24, 12);
 
             {
                 var M_location = gl.getUniformLocation(shaderProgram, 'M');
@@ -1649,6 +1703,58 @@
     }(DrawProgram));
 
 
+    var ForegroundDrawProgram = /*@__PURE__*/(function (DrawProgram) {
+        function ForegroundDrawProgram(gl) {
+            var vertexShaderText = "\nprecision highp float;\n\nattribute vec3 vertexPosition_modelspace;\nattribute vec4 vertexColor;\nuniform mat4 M;\nvarying vec4 fragColor;\n\nvoid main()\n{\n    fragColor = vertexColor;\n    gl_Position = M * vec4(vertexPosition_modelspace, 1);\n}\n";
+            var fragmentShaderText = "\nprecision mediump float;\n\nvarying vec4 fragColor;\nvoid main()\n{\n    gl_FragColor = vec4(fragColor);\n}\n";
+            DrawProgram.call(this, gl, vertexShaderText, fragmentShaderText);
+        }
+
+        if ( DrawProgram ) ForegroundDrawProgram.__proto__ = DrawProgram;
+        ForegroundDrawProgram.prototype = Object.create( DrawProgram && DrawProgram.prototype );
+        ForegroundDrawProgram.prototype.constructor = ForegroundDrawProgram;
+
+        ForegroundDrawProgram.prototype.draw_tile = function draw_tile (matrix, tile) {
+            // guard: if no data in the tile, we will skip rendering
+            var triangleVertexPosBufr = tile.content.foreground_triangleVertexPosBufr;
+            if (triangleVertexPosBufr === null) {
+                return;
+            }
+            // render
+            var gl = this.gl;
+            var shaderProgram = this.shaderProgram;
+            gl.useProgram(shaderProgram);
+            gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPosBufr);
+
+            //stride = 24: each of the six values(x, y, z, r_frac, g_frac, b_frac) takes 4 bytes
+            //itemSize = 3: x, y, z;   
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'vertexPosition_modelspace', 3, 28, 0);
+            //itemSize = 3: r_frac, g_frac, b_frac;   offset = 12: the first 12 bytes are for x, y, z
+            this._specify_data_for_shaderProgram(gl, shaderProgram, 'vertexColor', 4, 28, 12);
+
+            {
+                var M_location = gl.getUniformLocation(shaderProgram, 'M');
+                gl.uniformMatrix4fv(M_location, false, matrix);
+            }
+
+            gl.enable(gl.CULL_FACE);
+            //gl.disable(gl.CULL_FACE); // FIXME: should we be explicit about face orientation and use culling?
+
+            //gl.cullFace(gl.BACK);
+            gl.cullFace(gl.FRONT);
+            // gl.cullFace(gl.FRONT_AND_BACK);
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); //make it transparent according to alpha value
+            //gl.disable(gl.BLEND);
+            //gl.enable(gl.DEPTH_TEST);
+            gl.drawArrays(gl.TRIANGLES, 0, triangleVertexPosBufr.numItems);
+        };
+
+        return ForegroundDrawProgram;
+    }(DrawProgram));
+
+
     var Renderer = function Renderer(gl, ssctree) {
         this.gl = gl;
         this.ssctree = ssctree;
@@ -1656,9 +1762,10 @@
 
         // construct programs once, at init time
         this.programs = [
-            new PolygonDrawProgram(this.gl),
-            new LineDrawProgram(this.gl),
-            new ImageTileDrawProgram(gl)
+            new PolygonDrawProgram(gl),
+            new LineDrawProgram(gl),
+            new ImageTileDrawProgram(gl),
+            new ForegroundDrawProgram(gl)
         ];
     };
 
@@ -1724,7 +1831,15 @@
                 // line_draw_program.draw_tile(matrix, tile, near_St, 2.0);
                 // interior (color)
                 line_draw_program.draw_tile(matrix, tile, near_St, this$1.settings.boundary_width);
-            });
+                });
+
+            //var foreground_draw_program = this.programs[3];
+            //tiles
+            //.forEach(tile => {
+            //    foreground_draw_program.draw_tile(matrix, tile);
+            //})
+
+
         }
 
         // this.buckets.forEach(bucket => {
@@ -1800,18 +1915,18 @@
         this.worker.onmessage = function (evt) { this$1.receive(evt);};
     };
 
-    WorkerHelper.prototype.send = function send (data, callback) 
+    WorkerHelper.prototype.send = function send (url, callback) //e.g., callback: the function of makeBuffers
     {
         // use a random id
         var id = Math.round((Math.random() * 1e18)).toString(36).substring(0, 10);
         this.tasks[id] = callback;
-        this.worker.postMessage({id: id, msg: data});
+        this.worker.postMessage({ id: id, msg: url}); //parse the data of the obj file specified by the url
     };
 
     WorkerHelper.prototype.receive = function receive (evt) 
     {
         var id = evt.data.id;
-        var msg = evt.data.msg;
+        var msg = evt.data.msg; // e.g., arrays = parse_obj(data_text)
         this.tasks[id](msg); // execute the callback that was registered while sending
         delete this.tasks[id];
     };
@@ -1859,28 +1974,41 @@
                     step_highs = [0]; //if the file exists, we will do parallel merging
                     return r.json()
                 })
-                .then(function (eventdiff_dt) {
-                    var current_face_num = eventdiff_dt.face_num;
-                    var parallel_param = eventdiff_dt.parallel_param;
-                    //eventdiff_ltlt = eventdiff_dt.eventdiff
-                    eventdiff_dt.eventdiff_repetition.forEach(function (eventdiff_rep_lt) {
-                        for (var i = 0; i < eventdiff_rep_lt[1]; i++) {
-                            var max_parallel = 1 //Math.ceil(current_face_num * parallel_param);
-                            var merged_num = max_parallel - eventdiff_rep_lt[0];
-                            current_face_num -= merged_num;
-                            step_highs.push(step_highs[step_highs.length - 1] + merged_num);
-                            //console.log('step_highs[step_highs.length - 1]:', step_highs[step_highs.length - 1])
-                            //console.log('step_highs.length - 1:', step_highs.length - 1)
-
+                .then(function (step_eventdiff_dt) {
+                    var current_face_num = step_eventdiff_dt.face_num;
+                    var parallel_param = step_eventdiff_dt.parallel_param;
+                    var step_diff_ltlt = step_eventdiff_dt.step_eventdiff;
+                    var diff_index = 0;
+                    var step = 1;
+                    while (current_face_num > 1) {
+                        var max_parallel = Math.ceil(current_face_num * parallel_param);
+                        var event_diff = 0;
+                        if (diff_index < step_diff_ltlt.length && step_diff_ltlt[diff_index][0] == step) {
+                            event_diff = step_diff_ltlt[diff_index][1];
+                            diff_index += 1;
                         }
+                        var eventnum = max_parallel - event_diff;                        
+                        step_highs.push(step_highs[step_highs.length - 1] + eventnum);
+
+                        step += 1;
+                        current_face_num -= eventnum;
+                    } 
+
+                    //console.log('tiles.js step_diff_ltlt.length:', step_diff_ltlt.length)
 
 
+                    ////eventdiff_ltlt = eventdiff_dt.eventdiff
+                    //step_eventdiff_dt.step_eventdiff.forEach(eventdiff_rep_lt => {
+                    //for (var i = 0; i < eventdiff_rep_lt[1]; i++) {
+                    //    var max_parallel = Math.ceil(current_face_num * parallel_param)
+                    //    var merged_num = max_parallel - eventdiff_rep_lt[0]
+                    //    current_face_num -= merged_num
+                    //    step_highs.push(step_highs[step_highs.length - 1] + merged_num)
+                    //    //console.log('step_highs[step_highs.length - 1]:', step_highs[step_highs.length - 1])
+                    //    //console.log('step_highs.length - 1:', step_highs.length - 1)
 
-                        //eventdiff_lt.forEach()
-
-
-                    });
-
+                    //}
+                    //})
 
 
                     //eventdiff_dt.eventdiff.forEach(function (eventdiff_lt) {
@@ -1891,7 +2019,8 @@
                 })
                 .then(function () {
                     this$1.step_highs = step_highs;
-                    //console.log('tiles.js step_highs:', step_highs)
+                    //this.msgbus.publish('data.step_highs.loaded')
+                    console.log('tiles.js step_highs:', step_highs);
                 })
                 .catch(function () {
                     this$1.step_highs = null;
@@ -1995,8 +2124,7 @@
         to_retrieve.map(function (elem) {
             this$1.helper_idx_current = (this$1.helper_idx_current + 1) % this$1.worker_helpers.length;
             var content = new TileContent(this$1.msgbus, this$1.settings.texture_root_href, this$1.worker_helpers[this$1.helper_idx_current]);
-            content.load(elem.url, gl); //e.g., elem.url = de/buchholz_greedy_test.obj
-            console.log('tiles.js fetch_tiles elem.url:', elem.url);
+            content.load(elem.url, gl); //e.g., elem.url = /gpudemo/2020/03/merge/0.1/data/sscgen_smooth.obj
             elem.content = content;
             elem.loaded = true;
             elem.last_touched = _now();
@@ -2016,8 +2144,10 @@
             })
     };
 
-    SSCTree.prototype.get_step_from_St = function get_step_from_St (St, if_snap) {
+    SSCTree.prototype.get_step_from_St = function get_step_from_St (St, if_snap, zoom_factor, current_step) {
             if ( if_snap === void 0 ) if_snap = false;
+            if ( zoom_factor === void 0 ) zoom_factor = 1;
+            if ( current_step === void 0 ) current_step = Number.MAX_SAFE_INTEGER;
 
             
         // FIXME: these 2 variables should be adjusted
@@ -2040,17 +2170,144 @@
         // reduction in percentage
         var reductionf = 1 - Math.pow(this.tree.metadata.start_scale_Sb / St, 2);
         var step = this.tree.metadata.no_of_objects_Nb * reductionf; //step is not necessarily an integer
+        var snapped_step = step;
         var step_highs = this.step_highs;
         if (if_snap == true
             && step_highs != null
-            && step > step_highs[0]
-            && step < step_highs[step_highs.length - 1] //without this line, the map will stop zooming out when at the last step
+            && step > step_highs[0] - 0.001
+            && step < step_highs[step_highs.length - 1] + 0.001 //without this line, the map will stop zooming out when at the last step
         ) {
-            step = snap_to_existing_stephigh(step, step_highs);
+            //console.log('tiles.js step_highs:', step_highs)
+            //console.log('tiles.js step:', step)
+                
+
+            var current_step_index = snap_to_existing_stephigh(current_step, step_highs);
+            if (Math.abs(current_step - step_highs[current_step_index]) < 0.001) {
+                current_step = step_highs[current_step_index];
+            }
+
+
+            //if we scroll too little, the map doesn't zoom because of the snapping.
+            //we force snapping for at least one step. 
+            //let snapped_St = this.get_St_from_step(step_highs[step_index])
+            //console.log('tiles.js normal_step_diff:', normal_step_diff)
+            //console.log('tiles.js current_step:', current_step)
+            //console.log('tiles.js step_highs[step_index]:', step_highs[step_index])
+            var snapped_index = snap_to_existing_stephigh(step, step_highs);
+            snapped_step = step_highs[snapped_index];
+
+
+
+            if (current_step != Number.MAX_SAFE_INTEGER) {
+                if (zoom_factor < 1 //zoom out
+                    && snapped_step <= current_step) { //wrong direction because of snapping
+                    snapped_index += 1;
+                }
+                else if (zoom_factor > 1 //zoom in
+                    && snapped_step >= current_step) { //wrong direction because of snapping
+                    snapped_index -= 1;
+                }
+            }
+
+            snapped_step = step_highs[snapped_index];
+
+            //console.log('tiles.js new step:', step)
+
+            //console.log('tiles.js snapped_step:', step)
         }
             
         //return Math.max(0, step)
-        return step
+        return snapped_step
+    };
+
+    SSCTree.prototype.get_time_factor = function get_time_factor (St, if_snap, zoom_factor, current_step) {
+            if ( if_snap === void 0 ) if_snap = false;
+            if ( zoom_factor === void 0 ) zoom_factor = 1;
+            if ( current_step === void 0 ) current_step = Number.MAX_SAFE_INTEGER;
+
+
+        if (this.tree === null || if_snap == false) {
+            return 1
+        }
+
+        // reduction in percentage
+        var reductionf = 1 - Math.pow(this.tree.metadata.start_scale_Sb / St, 2);
+        var step = this.tree.metadata.no_of_objects_Nb * reductionf; //step is not necessarily an integer
+        var snapped_step = step;
+        var step_highs = this.step_highs;
+        var time_factor = 1;
+        if (if_snap == true
+            && step_highs != null
+            && step > step_highs[0] - 0.001
+            && step < step_highs[step_highs.length - 1] + 0.001 //without this line, the map will stop zooming out when at the last step
+        ) {
+            //console.log('tiles.js --------------------------------------')
+            //console.log('tiles.js step_highs:', step_highs)
+            //console.log('tiles.js current_step:', current_step)
+            var current_step_index = snap_to_existing_stephigh(current_step, step_highs);
+            if (Math.abs(current_step - step_highs[current_step_index]) < 0.001) {
+                current_step = step_highs[current_step_index];
+            }
+
+
+
+            //console.log('tiles.js current_step_index:', current_step_index)
+
+            //console.log('tiles.js step:', step)
+            //console.log('tiles.js step_highs[current_step_index]:', step_highs[current_step_index])
+            var normal_step_diff = Math.abs(step - current_step);
+
+            var snapped_index = snap_to_existing_stephigh(step, step_highs);
+
+
+            //if we scroll too little, the map doesn't zoom because of the snapping.
+            //we force snapping for at least one step. 
+
+            //let snapped_St = this.get_St_from_step(step_highs[step_index])
+            //console.log('tiles.js normal_step_diff:', normal_step_diff)
+            //console.log('tiles.js snapped_index:', snapped_index)
+            //console.log('tiles.js step_highs[snapped_index]:', step_highs[snapped_index])
+            //console.log('tiles.js zoom_factor:', zoom_factor)
+            //if (current_step == step_highs[snapped_index] && current_step != Number.MAX_SAFE_INTEGER) {
+            //if (zoom_factor > 1) { //zooming in 
+            //    snapped_index -= 1
+            //}
+            //else if (zoom_factor < 1) { //zooming out
+            //    snapped_index += 1
+            //}
+            //}
+
+            snapped_step = step_highs[snapped_index];
+            if (current_step != Number.MAX_SAFE_INTEGER) {
+                if (//current_step < step //zoom out
+                    zoom_factor < 1
+                    && snapped_step <= current_step) { //wrong direction or no zooming because of snapping
+                    snapped_index += 1;
+                }
+                else if (//current_step > step //zoom in
+                    zoom_factor > 1
+                    && snapped_step >= current_step) { //wrong direction because of snapping
+                    snapped_index -= 1;
+                }
+            }
+            snapped_step = step_highs[snapped_index];
+            //console.log('tiles.js snapped_step:', snapped_step)
+
+            var adjusted_step_diff = Math.abs(snapped_step - current_step);
+
+            if (current_step != Number.MAX_SAFE_INTEGER) {
+                time_factor = adjusted_step_diff / normal_step_diff;
+            }
+
+            //console.log('tiles.js adjusted_step_diff:', adjusted_step_diff)
+            //console.log('tiles.js normal_step_diff:', normal_step_diff)
+            //console.log('tiles.js time_factor:', time_factor)
+
+            //console.log('tiles.js snapped_step:', step)
+        }
+
+        //return Math.max(0, step)
+        return time_factor
     };
 
     SSCTree.prototype.get_St_from_step = function get_St_from_step (step) {
@@ -2063,8 +2320,8 @@
 
 
     function snap_to_existing_stephigh(step, step_highs) {
-        var start = 0, end = step_highs.length - 1;
 
+        var start = 0, end = step_highs.length - 1;
         // Iterate while start not meets end 
         while (start <= end) {
 
@@ -2072,7 +2329,7 @@
             var mid = Math.floor((start + end) / 2);
 
             // If element is present at mid, return True 
-            if (step_highs[mid] == step) { return step; }
+            if (step_highs[mid] == step) { return mid; }
 
             // Else look in left or right half accordingly 
             else if (step_highs[mid] < step)
@@ -2085,10 +2342,10 @@
         //console.log('step_highs[start], step, step_highs[end]:', step_highs[start], step, step_highs[end])
         //console.log('step_highs[start] - step, step - step_highs[end]:', step_highs[start] - step, step - step_highs[end])
         if (step_highs[start] - step <= step - step_highs[end]) { //start is already larger than end by 1
-            return step_highs[start]
+            return Math.min(start, step_highs.length - 1) //start will be larger than the last value of step_highs[0] if step is larger than all the values of step_highs    
         }
         else {
-            return step_highs[end]
+            return Math.max(end, 0) //end will be negtive if step is smaller than step_highs[0]
         }
     }
 
@@ -2207,79 +2464,6 @@
         return are_overlapping
     }
 
-    //function generate_class_color_dt() {
-
-    //    var class_color_dt = {
-
-    //        // atkis
-    //        2101: { r: 239, g: 200, b: 200 },
-    //        2112: { r: 255, g: 174, b: 185 },
-    //        2114: { r: 204, g: 204, b: 204 },
-    //        2201: { r: 138, g: 211, b: 175 },
-    //        2202: { r: 51, g: 204, b: 153 },
-    //        2213: { r: 170, g: 203, b: 175 },
-    //        2230: { r: 181, g: 227, b: 181 },
-    //        2301: { r: 157, g: 157, b: 108 },
-    //        3103: { r: 254, g: 254, b: 254 },
-    //        3302: { r: 204, g: 153, b: 255 },
-    //        4101: { r: 234, g: 216, b: 189 },
-    //        4102: { r: 230, g: 255, b: 204 },
-    //        4103: { r: 171, g: 223, b: 150 },
-    //        4104: { r: 255, g: 255, b: 192 },
-    //        4105: { r: 40, g: 200, b: 254 },
-    //        4107: { r: 141, g: 197, b: 108 },
-    //        4108: { r: 174, g: 209, b: 160 },
-    //        4109: { r: 207, g: 236, b: 168 },
-    //        4111: { r: 190, g: 239, b: 255 },
-    //        5112: { r: 181, g: 208, b: 208 },
-
-    //        // top10nl
-    //        10310: { r: 230, g: 0, b: 0 },
-    //        10311: { r: 230, g: 0, b: 0 },
-    //        10410: { r: 255, g: 170, b: 0 },
-    //        10411: { r: 255, g: 170, b: 0 },
-    //        10510: { r: 255, g: 255, b: 0 },
-    //        10600: { r: 255, g: 255, b: 255 },
-    //        10700: { r: 255, g: 255, b: 255 },
-    //        10710: { r: 255, g: 255, b: 255 },
-    //        10720: { r: 179, g: 179, b: 0 },
-    //        10730: { r: 156, g: 156, b: 156 },
-    //        10740: { r: 255, g: 211, b: 127 },
-    //        10741: { r: 255, g: 211, b: 127 },
-    //        10750: { r: 255, g: 167, b: 127 },
-    //        10760: { r: 255, g: 167, b: 127 },
-    //        10780: { r: 255, g: 255, b: 255 },
-    //        12400: { r: 190, g: 232, b: 255 },
-    //        12500: { r: 190, g: 232, b: 255 },
-    //        13000: { r: 0, g: 0, b: 0 },
-    //        14010: { r: 255, g: 255, b: 222 },
-    //        14030: { r: 156, g: 156, b: 156 },
-    //        14040: { r: 201, g: 235, b: 112 },
-    //        14050: { r: 255, g: 255, b: 190 },
-    //        14060: { r: 140, g: 168, b: 0 },
-    //        14080: { r: 140, g: 168, b: 0 },
-    //        14090: { r: 140, g: 168, b: 0 },
-    //        14100: { r: 204, g: 204, b: 204 },
-    //        14120: { r: 255, g: 255, b: 222 },
-    //        14130: { r: 201, g: 235, b: 112 },
-    //        14140: { r: 252, g: 179, b: 251 },
-    //        14160: { r: 255, g: 255, b: 255 },
-    //        14162: { r: 255, g: 255, b: 255 },
-    //        14170: { r: 201, g: 235, b: 112 },
-    //        14180: { r: 255, g: 255, b: 255 },
-
-    //    };
-
-    //    for (var key in class_color_dt) {
-    //        var color = class_color_dt[key];  //color is a dictionary of elements r, g, b
-    //        color.r_frac = color.r / 255;
-    //        color.g_frac = color.g / 255;
-    //        color.b_frac = color.b / 255;
-    //    }
-
-    //    return class_color_dt;
-    //}
-
     var isPowerOf2 = (function (value) { return (value & (value - 1)) == 0 });
 
 
@@ -2307,6 +2491,7 @@
         this.polygon_triangleVertexPosBufr = null;
         this.line_triangleVertexPosBufr = null;
         this.displacementBuffer = null;
+        this.foreground_triangleVertexPosBufr = null;
 
 
     };
@@ -2330,38 +2515,43 @@
     {
             var this$1 = this;
 
-        console.log('tiles.js load_ssc_tile url:', url);
         this.worker_helper.send(
-            url, 
-            function (data) {
+            url, //e.g. /gpudemo/2020/03/merge/0.1/data/sscgen_smooth.obj
+            function (data) { //I call the function makeBuffers
 
                 // upload received data to GPU
 
-                // polygons
-                var triangles = new Float32Array(data[0]);
-                this$1.polygon_triangleVertexPosBufr = gl.createBuffer();
-                gl.bindBuffer(gl.ARRAY_BUFFER, this$1.polygon_triangleVertexPosBufr);
-                gl.bufferData(gl.ARRAY_BUFFER, triangles, gl.STATIC_DRAW);
-                this$1.polygon_triangleVertexPosBufr.itemSize = 3;
-                this$1.polygon_triangleVertexPosBufr.numItems = triangles.length / 6; 
+                // buffer for triangles of polygons
+                // itemSize = 6: x, y, z, r_frac, g_frac, b_frac (see parse.js)
+                this$1.polygon_triangleVertexPosBufr = create_data_buffer(gl, new Float32Array(data[0]), 6);
 
-                // lines
-                var line_triangles = new Float32Array(data[1]);
-                this$1.line_triangleVertexPosBufr = gl.createBuffer();
-                gl.bindBuffer(gl.ARRAY_BUFFER, this$1.line_triangleVertexPosBufr);
-                gl.bufferData(gl.ARRAY_BUFFER, line_triangles, gl.STATIC_DRAW);
-                this$1.line_triangleVertexPosBufr.itemSize = 4;
-                this$1.line_triangleVertexPosBufr.numItems = line_triangles.length / 4; 
+                // buffer for triangles of boundaries
+                // itemSize = 4: x, y, z (step_low), w (step_high); e.g., start (see parse.js)
+                this$1.line_triangleVertexPosBufr = create_data_buffer(gl, new Float32Array(data[1]), 4);
 
-                var line_displacements = new Float32Array(data[2]);
-                this$1.displacementBuffer = gl.createBuffer();
-                gl.bindBuffer(gl.ARRAY_BUFFER, this$1.displacementBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, line_displacements, gl.STATIC_DRAW);
-                this$1.displacementBuffer.itemSize = 2;   //each item has only x and y
-                this$1.displacementBuffer.numItems = line_displacements.length / 2;
+                // buffer for displacements of boundaries
+                // itemSize = 2: x and y; e.g., startl (see parse.js)
+                this$1.displacementBuffer = create_data_buffer(gl, new Float32Array(data[2]), 2);
+
+                var foreground_data_array = new Float32Array([
+                    186500, 312600, 0, 1, 0, 0, 0.5,
+                    186700, 311800, 0, 0, 0, 1, 0.5,
+                    186200, 311800, 0, 0, 1, 0, 0.5]); //clockwise
+                this$1.foreground_triangleVertexPosBufr = create_data_buffer(gl, foreground_data_array, 7);
+
 
                 // notify we are ready
                 this$1.msgbus.publish('data.tile.loaded', 'tile.ready');
+
+                function create_data_buffer(gl, data_array, itemSize) {
+                    var data_buffer = gl.createBuffer();
+                    gl.bindBuffer(gl.ARRAY_BUFFER, data_buffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, data_array, gl.STATIC_DRAW);
+                    data_buffer.itemSize = itemSize; //x, y, z, r_frac, g_frac, b_frac
+                    data_buffer.numItems = data_array.length / itemSize;
+                    return data_buffer;
+                }
+                    
             }
         );
     };
@@ -2736,6 +2926,8 @@
     var Map = function Map(map_settings) {
         var this$1 = this;
 
+        //console.log('map.js test:')
+        //console.log('map.js map_settings:', map_settings)
         var container = map_settings['canvas_nm'];
         if (typeof container === 'string') {
             this._container = window.document.getElementById(container);
@@ -2759,9 +2951,10 @@
         this._interaction_settings = {
             zoom_factor: 1,
             zoom_duration: 1000,
+            time_factor: 1, //we prolong the time because we merge parallelly
             pan_duration: 1000
         };
-
+        this.if_snap = true;
 
         this.msgbus = new MessageBusConnector();
 
@@ -2777,6 +2970,7 @@
             var St = this$1._transform.getScaleDenominator();
             var step = this$1.ssctree.get_step_from_St(St, true);
             this$1._prepare_active_tiles(step);
+            this$1.panAnimated(0, 0); // animate for a small time, so that when new tiles are loaded, we are already rendering
         });
 
         this.msgbus.subscribe("settings.render.boundary-width", function (topic, message, sender) { 
@@ -2810,6 +3004,7 @@
 
         dragHandler(this);  // attach mouse handlers
         scrollHandler(this);
+        zoomButtonHandler(this);
     //    moveHandler(this)
         touchPinchHandler(this); // attach touch handlers
         touchDragHandler(this);
@@ -2851,33 +3046,64 @@
     };
 
     Map.prototype.getWebGLContext = function getWebGLContext () {
-        return this.getCanvasContainer().getContext('webgl', { alpha: true, antialias: true })
+        return this.getCanvasContainer().getContext("webgl",
+            { antialias: true, alpha: false, premultipliedAlpha: false })
     };
 
     Map.prototype.getTransform = function getTransform () {
         return this._transform;
     };
 
-    Map.prototype.render = function render () {
-        var St = this.getTransform().getScaleDenominator();
+    Map.prototype.render = function render (k) {
+            if ( k === void 0 ) k = 0;
+
+
+        //if k==1, we are at the end of a zooming operation, 
+        //we directly use the snapped_step and snapped_St to avoid rounding problems
+        var St = 0;
+        var step = 0;
+        var snapped_step = this.getTransform().snapped_step;
+        if (k == 1 && this.if_snap == true &&
+            snapped_step != Number.MAX_SAFE_INTEGER) { //we are not at the state of just having loaded data
+            St = this.getTransform().snapped_St;
+            step = snapped_step;
+        }
+        else {
+            St = this.getTransform().getScaleDenominator();
+            step = this.ssctree.get_step_from_St(St);
+        }
+
+        step -= 0.001; //to compensate with the rounding problems
+            
         this.msgbus.publish('map.scale', [this.getTransform().getCenter(), St]);
 
         var last_step = Number.MAX_SAFE_INTEGER;
         if (this.ssctree.tree != null) { //the tree is null when the tree hasn't been loaded yet. 
             last_step = this.ssctree.tree.metadata.no_of_steps_Ns;
         }
-        //We minus by 0.01 in order to compensate with (possibly) the round-off error
-        //so that the boundaries can be displayed correctly.
-        var step = this.ssctree.get_step_from_St(St) - 0.02;
+
+        //var step = this.ssctree.get_step_from_St(St) //+ 0.001
+        //console.log('map.js, step before snapping:', step)
+        //if (k ==1) { //in this case, we are at the end of a zooming operation, we test if we want to snap
+        //var snapped_step = this.ssctree.get_step_from_St(St, true, this._interaction_settings.zoom_factor)
+        //if (Math.abs(step - snapped_step) < 0.001) { //snap to an existing step
+        //    step = snapped_step
+        //}
+        //}
+
+        //step -= 0.001
+
+        //var step = this.ssctree.get_step_from_St(St) //- 0.001
+        //console.log('map.js, step:', step)
 
         if (step < 0) {
             step = 0;
         }
-        else if (step > last_step) {
-            step = last_step + 0.01; // +0.01: in order to display the exterior boundary correctly
+        else if (step >= last_step) {
+            step = last_step;
         }
 
-        //console.log('map.js, step:', step)
+        //console.log('map.js, step after snapping:', step)
 
 
         var matrix_box3d = this._prepare_active_tiles(step);
@@ -2908,7 +3134,7 @@
             // update the world_square matrix
             this$1.getTransform().world_square = m;
             this$1.getTransform().updateViewportTransform();
-            this$1.render();
+            this$1.render(k);
             if (k == 1) {
                 this$1._abort = null;
             }
@@ -2928,7 +3154,7 @@
             // update the world_square matrix
             this.getTransform().world_square = m;
             this.getTransform().updateViewportTransform();
-            this.render();
+            this.render(k);
             if (k == 1) {
                 this._abort = null;
             }
@@ -2938,7 +3164,7 @@
 
     Map.prototype.doEaseOutSine = function doEaseOutSine (start, end) {
             var this$1 = this;
-
+     //start: the start world square; end: the end world square
         var interpolate = function (k) {
             var m = new Float32Array(16);
             var D = (Math.sin(k * (Math.PI * 0.5)));
@@ -2950,7 +3176,7 @@
             // update the world_square matrix
             this$1.getTransform().world_square = m;
             this$1.getTransform().updateViewportTransform();
-            this$1.render();
+            this$1.render(k);
             if (k === 1) {
                 this$1._abort = null;
             }
@@ -2971,7 +3197,7 @@
             // update the world_square matrix
             this.getTransform().world_square = m;
             this.getTransform().updateViewportTransform();
-            this.render();
+            this.render(k);
             if (k == 1) {
                 this._abort = null;
             }
@@ -2981,7 +3207,8 @@
 
     Map.prototype.animateZoom = function animateZoom (x, y, zoom_factor) {
         var start = this.getTransform().world_square;
-        this.getTransform().zoom(this.ssctree, zoom_factor, x, this.getCanvasContainer().getBoundingClientRect().height - y);
+        this._interaction_settings.time_factor = this.getTransform().zoom(
+            this.ssctree, zoom_factor, x, this.getCanvasContainer().getBoundingClientRect().height - y, this.if_snap);
         var end = this.getTransform().world_square;
         var interpolate = this.doEaseOutSine(start, end);
         return interpolate;
@@ -3014,7 +3241,8 @@
     };
 
     Map.prototype.zoom = function zoom (x, y, factor) {
-        this.getTransform().zoom(this.ssctree, factor, x, this.getCanvasContainer().getBoundingClientRect().height - y);
+        this._interaction_settings.time_factor = this.getTransform().zoom(
+            this.ssctree, factor, x, this.getCanvasContainer().getBoundingClientRect().height - y, this.if_snap);
         this.render();
     };
 
@@ -3039,11 +3267,22 @@
 
     Map.prototype.zoomAnimated = function zoomAnimated (x, y, zoom_factor) {
         if (this._abort !== null) {
+            //console.log('map.js test1')
             this._abort();
         }
+        //console.log('map.js test2')
+        //console.log('map.js this._interaction_settings.time_factor0:', this._interaction_settings.time_factor)
+        //console.log('map.js zoom_factor:', zoom_factor)
         var interpolator = this.animateZoom(x, y, zoom_factor);
+        this._interaction_settings.zoom_factor = zoom_factor;
+        //this.zoom_factor = zoom_factor
         // FIXME: settings
-        this._abort = timed(interpolator, this._interaction_settings.zoom_duration, this);
+
+        var zoom_duration = this._interaction_settings.zoom_duration * this._interaction_settings.time_factor;
+        //console.log('map.js this._interaction_settings.zoom_duration:', this._interaction_settings.zoom_duration)
+        //console.log('map.js this._interaction_settings.time_factor:', this._interaction_settings.time_factor)
+        //console.log('map.js zoom_duration:', zoom_duration)
+        this._abort = timed(interpolator, zoom_duration, this);
     };
 
     Map.prototype.panAnimated = function panAnimated (dx, dy) {
