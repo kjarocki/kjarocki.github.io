@@ -2,7 +2,7 @@
 
 #Konrad Jarocki, TU Delft, 2020 
 
-#Parallel assignment of consequtive generalization operation in order to be able to present smooth transition between features created in Space Scale Cube. 
+#Parallel assignment of consequtive generalization operations in order to be able to present smooth transition between features. Information about smooth transition is already created in Space Scale Cube, however typical approach which is consequtive provision of generalization operations makes it impossible to see due to limited time for every operation. 
 
 #This web viewer is created for purpose of Graduation Project for Msc Geomatics at TU Delft. It is trying to contribute to large project called Vario-scale geo-information.
 
