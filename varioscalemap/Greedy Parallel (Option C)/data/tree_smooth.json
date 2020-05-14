@@ -6,7 +6,7 @@
     "algorithm_comment": "Greedy, Astar, or some other algorithms",
     "parameter": "5%",
     "parameter_comment": "some parameters used in the chosen algorithm",
-    "start_scale_Sb": 10000,
+    "start_scale_Sb": 12791,
     "start_scale_Sb_comment": "scale denominator of base map (according to dataset)",
     "no_of_objects_Nb": 252,
     "no_of_objects_Nb_comment": "number of objects on base map (according to dataset)",
